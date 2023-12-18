@@ -9,9 +9,9 @@ from keep_alive import keep_alive
 
 keep_alive()
 
-# Define your intents
 intents = discord.Intents.default()
 intents.messages = True  # Enable message-related events
+intents.message_content = True  # Enable message content intent
 
 # Create the bot instance with intents
 bot = commands.Bot(command_prefix=".", intents=intents)
