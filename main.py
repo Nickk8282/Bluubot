@@ -9,7 +9,7 @@ from keep_alive import keep_alive
 
 keep_alive()
 
-bot = commands.Bot(command_prefix=".")
+bot = commands.Bot(command_prefix=".", intents=intents)
 
 disabled_channels = set()
 
