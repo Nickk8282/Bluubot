@@ -9,6 +9,11 @@ from keep_alive import keep_alive
 
 keep_alive()
 
+# Define your intents
+intents = discord.Intents.default()
+intents.messages = True  # Enable message-related events
+
+# Create the bot instance with intents
 bot = commands.Bot(command_prefix=".", intents=intents)
 
 disabled_channels = set()
