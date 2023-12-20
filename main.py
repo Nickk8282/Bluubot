@@ -1,15 +1,8 @@
 import discord
 from discord.ext import commands
-import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials
 import flask
 from flask import Flask, render_template 
 from threading import Thread
-from spotipy.cache_handler import CacheHandler
-from spotipy.oauth2 import SpotifyOAuth
-from spotipy.cache_handler import CacheFileHandler
-from discord import FFmpegPCMAudio
-from discord.utils import get
 import os
 import json
 import psutil
