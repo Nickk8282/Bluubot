@@ -1,327 +1,278 @@
 import discord
 from discord.ext import commands
-import datetime
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
+import flask
+from flask import Flask, render_template 
+from threading import Thread
+from spotipy.cache_handler import CacheHandler
+from spotipy.oauth2 import SpotifyOAuth
+from spotipy.cache_handler import CacheFileHandler
+from discord import FFmpegPCMAudio
+from discord.utils import get
 import os
-import random
-from PIL import Image, ImageDraw, ImageFont
+import json
+import psutil
+import datetime
 
-from keep_alive import keep_alive
+app = Flask(__name__)
+@app.route('/')
+def index():
+ return '''<body style="margin: 0; padding: 0;">
+<iframe width="100%" height="100%" src="https://axocoder.vercel.app/"frameborder="0"111allowfullscreen></iframe>
+</body>'''
+
+def run():
+    app.run(host='0.0.0.0', port=8080)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+
 
 keep_alive()
+print("Server Running Because of Axo")
 
+# Define your intents
 intents = discord.Intents.default()
 intents.messages = True  # Enable message-related events
 intents.message_content = True  # Enable message content intent
-
-# Create the bot instance with intents
+intents.guilds = True  # Enable guild-related events (optional, add more if needed)
+# Initialize the bot with a prefix
 bot = commands.Bot(command_prefix=".", intents=intents)
 
-disabled_channels = set()
+      
+channel_id = 1187057942030196787  # Replace with your actual channel ID
 
-@bot.command(name='skullboard')
-@commands.has_permissions(manage_messages=True)
-async def skullboard(ctx, author_id: int, channel: discord.TextChannel, message_content: str, jump_to_message_id: int):
-    # Delete user's message
-    await ctx.message.delete()
 
-    # Get author's user object
-    author = await bot.fetch_user(author_id)
 
-    # Get the jump-to message link
-    jump_to_link = f"[Jump To](https://discord.com/channels/{ctx.guild.id}/{channel.id}/{jump_to_message_id})"
 
-    # Create the embed
-    embed = discord.Embed(
-        title="Skullboard",
-        color=discord.Color.dark_grey(),
-        description=f"**Author:** {author.mention}\n**Channel:** {channel.mention}\n**Message:** {message_content}\n{jump_to_link}",
-        timestamp=datetime.datetime.utcnow()
-    )
 
-    # Set author's profile pic as thumbnail
-    embed.set_thumbnail(url=author.avatar_url)
 
-    # Set footer with author's ID
-    embed.set_footer(text=f"{author.id} | {datetime.datetime.utcnow().strftime('%Y-%m-%d')} | {datetime.datetime.utcnow().strftime('%H:%M:%S')}")
+      # Create a database object to store warnings
+warnings_db = {}
 
-    # Send the embed
-    message = await ctx.send(embed=embed)
+      # Load warnings from a file when the bot starts
+def load_warnings():
+          try:
+              with open('warnings.json', 'r') as file:
+                  global warnings_db
+                  warnings_db = json.load(file)
+          except FileNotFoundError:
+              warnings_db = {}
 
-    # Add reaction to the bot's own message
-    await message.add_reaction("💀")
+      # Save warnings to a file
+def save_warnings():
+          with open('warnings.json', 'w') as file:
+              json.dump(warnings_db, file, indent=2)
+
+      # Check if the user has the "manage messages" permission
+def is_mod(ctx):
+          return ctx.author.guild_permissions.manage_messages
+
+@bot.event
+async def on_ready():
+          print(f'Logged in as {bot.user.name}')
+          load_warnings()  # Load warnings when the bot starts
+
+@bot.command(name='warn')
+@commands.check(is_mod)
+async def warn(ctx, member: discord.Member, reason=None):
+          # Command to warn a user
+          if member:
+              if member.id not in warnings_db:
+                  warnings_db[member.id] = {'count': 0, 'warnings': []}
+
+              warn_count = warnings_db[member.id]['count'] + 1
+              warnings_db[member.id]['count'] = warn_count
+              warnings_db[member.id]['warnings'].append({'warner': ctx.author.name, 'reason': reason if reason else 'default'})
+
+              save_warnings()
+
+              embed = discord.Embed(title='User Warned', color=discord.Color.blue())
+              embed.add_field(name='User', value=member.mention)
+              embed.add_field(name='Warn Count', value=warn_count)
+              embed.add_field(name='Reason', value=reason if reason else 'Default')
+              await ctx.send(embed=embed)
+
+              # Send a message to the specified channel when a user is warned
+              channel = bot.get_channel(channel_id)
+              if channel:
+                  embed_warning = discord.Embed(title='User Warned', color=discord.Color.orange())
+                  embed_warning.add_field(name='User', value=member.mention)
+                  embed_warning.add_field(name='Warn Count', value=warn_count)
+                  embed_warning.add_field(name='Warner', value=ctx.author.name)
+                  embed_warning.add_field(name='Reason', value=reason if reason else 'Default')
+                  await channel.send(embed=embed_warning)
+
+@bot.command(name='warnings')
+@commands.check(is_mod)
+async def get_warnings(ctx, member: discord.Member):
+          # Command to check the warnings for a user
+          if member.id in warnings_db:
+              embed = discord.Embed(title='User Warnings', color=discord.Color.blue())
+              embed.add_field(name='User', value=member.mention)
+
+              if warnings_db[member.id]['warnings']:
+                  for i, warn in enumerate(warnings_db[member.id]['warnings'], start=1):
+                      embed.add_field(
+                          name=f'Warning {i}',
+                          value=f'**Warner:** {warn["warner"]}\n**Reason:** {warn["reason"]}',
+                          inline=False
+                      )
+              else:
+                  embed.add_field(name='No Warnings', value='This user has no warnings.')
+
+              await ctx.send(embed=embed)
+          else:
+              await ctx.send("This user has no warnings.")
+
+@bot.command(name='clearwarns')
+@commands.check(is_mod)
+async def clear_warnings(ctx, member: discord.Member):
+          # Command to clear warnings for a user
+          if member.id in warnings_db:
+              embed = discord.Embed(title='Select Warning to Remove', color=discord.Color.blue())
+              embed.add_field(name='User', value=member.mention)
+
+              if warnings_db[member.id]['warnings']:
+                  for i, warn in enumerate(warnings_db[member.id]['warnings'], start=1):
+                      embed.add_field(
+                          name=f'Warning {i}',
+                          value=f'**Warner:** {warn["warner"]}\n**Reason:** {warn["reason"]}',
+                          inline=False
+                      )
+
+                  await ctx.send(embed=embed)
+                  await ctx.send("Please enter the number of the warning you want to remove:")
+
+                  def check(message):
+                      return message.author == ctx.author and message.channel == ctx.channel and message.content.isdigit()
+
+                  try:
+                      msg = await bot.wait_for('message', check=check, timeout=30.0)
+                      warn_index = int(msg.content) - 1
+
+                      if 0 <= warn_index < len(warnings_db[member.id]['warnings']):
+                          removed_warning = warnings_db[member.id]['warnings'].pop(warn_index)
+                          warnings_db[member.id]['count'] -= 1
+                          save_warnings()
+                          await ctx.send(f"Warning {warn_index + 1} removed for {member.mention}. "
+                                         f"Warner: {removed_warning['warner']}, Reason: {removed_warning['reason']}")
+
+                          # Update warning positions
+                          for i, warn in enumerate(warnings_db[member.id]['warnings']):
+                              warn['position'] = i + 1
+                      else:
+                          await ctx.send("Invalid warning number. Please try again.")
+                  except TimeoutError:
+                      await ctx.send("Timed out. Please run the command again.")
+              else:
+                  await ctx.send("This user has no warnings to clear.")
+          else:
+              await ctx.send("This user has no warnings.")
+
+@bot.event
+async def on_command_error(ctx, error):
+          if isinstance(error, commands.CheckFailure):
+              await ctx.send("You can't run this command, dumbo! You need the 'Manage Messages' permission.")
+
+
+if __name__ == "__main__":
+      # Prompt user for bot token
+      bot_token = input("Please enter your bot token: ")
+
+locked_channels = {}
+
+# Check if the user has the "manage channels" permission
+def is_mod(ctx):
+    return ctx.author.guild_permissions.manage_channels
 
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user.name}')
 
-@bot.event
-async def on_ready():
-    print(f'Logged in as {bot.user.name}')
+@bot.command(name='lock')
+@commands.check(is_mod)
+async def lock_channel(ctx):
+    # Command to lock the channel
+    channel = ctx.channel
 
+    if channel.id not in locked_channels:
+        # Lock the channel
+        locked_channels[channel.id] = True
+        await channel.set_permissions(ctx.guild.default_role, send_messages=False)
 
-@bot.command(name='disabletext')
-@commands.has_permissions(manage_messages=True)
-async def disable_text(ctx, channel: discord.TextChannel):
-    disabled_channels.add(channel.id)
-    await ctx.send(f"Text messages are now disabled in {channel.mention}. Users can only send images with text.")
+        # Send an experience embed
+        embed = discord.Embed(title='Channel Locked 🔒', color=discord.Color.blue())
+        embed.add_field(name='Lockdown Experience', value='This channel is now in lockdown mode. Stay tuned for updates!')
+        await ctx.send(embed=embed)
+    else:
+        await ctx.send('This channel is already locked.')
 
-@bot.command(name='enabletext')
-@commands.has_permissions(manage_messages=True)
-async def enable_text(ctx, channel: discord.TextChannel):
-    disabled_channels.discard(channel.id)
-    await ctx.send(f"Text messages are now enabled in {channel.mention}. Users can send both text and images.")
+@bot.command(name='unlock')
+@commands.check(is_mod)
+async def unlock_channel(ctx):
+    # Command to unlock the channel
+    channel = ctx.channel
+
+    if channel.id in locked_channels:
+        # Unlock the channel
+        del locked_channels[channel.id]
+        await channel.set_permissions(ctx.guild.default_role, send_messages=True)
+
+        # Send an experience embed
+        embed = discord.Embed(title='Channel Unlocked 🔓', color=discord.Color.blue())
+        embed.add_field(name='Unlock Experience', value='This channel is now unlocked. Feel free to chat!')
+        await ctx.send(embed=embed)
+    else:
+        await ctx.send('This channel is not locked.')
+
+developer_id = 866906565767069736
+start_time = datetime.datetime.utcnow()
+commands_run = 0  # Counter for commands run
 
 @bot.event
 async def on_message(message):
-    if message.author.bot:
-        return  # Ignore messages from bots
+    global commands_run  # Access the global counter
 
-    if message.channel.id in disabled_channels and not message.attachments:
-        # Delete messages without images in disabled channels
-        await message.delete()
+    if message.author.id == developer_id and message.content.lower() == '.info':
+        # Check if the command is invoked by the bot developer
 
-        # Send an embed explaining the restriction
-        embed = discord.Embed(
-            title="Text Messages Disabled",
-            description=f"{message.author.mention}, you can't send texts without an image in this channel.",
-            color=discord.Color.dark_grey()
-        )
+        # Calculate ping
+        ping = round(bot.latency * 1000)
+
+        # Calculate uptime
+        uptime = format_uptime(start_time)
+
+        # Increment the commands_run counter
+        commands_run += 1
+
+        # Get GPU and storage information
+        gpu_usage = psutil.virtual_memory().percent
+        storage_usage = psutil.disk_usage('/').percent
+
+        # Create an embed with the gathered information
+        embed = discord.Embed(title="Bot Information", color=discord.Color.blurple())
+        embed.add_field(name="Ping", value=f"{ping}ms", inline=True)
+        embed.add_field(name="Uptime", value=uptime, inline=True)
+        embed.add_field(name="Commands Run", value=commands_run, inline=True)
+        embed.add_field(name="GPU Usage", value=f"{gpu_usage}%", inline=True)
+        embed.add_field(name="Storage Usage", value=f"{storage_usage}%", inline=True)
+
         await message.channel.send(embed=embed)
 
     await bot.process_commands(message)
- 
-roasts = [
-    "You're so ugly, when you were born, the doctor looked at your face and then slapped your mother.",
-    "If laughter is the best medicine, your face must be curing the world.",
-    "I'd agree with you, but then we'd both be wrong.",
-    "Is your ass jealous of the amount of shit that comes out of your mouth?",
-    "I'm not saying I hate you, but I would unplug your life support to charge my phone.",
-    "You are what happens when women drink during pregnancy.",
-    "There is someone out there for everyone. For you, it’s a therapist.",
-    "You have such a beautiful face… But let’s put a bag over that personality.",
-    "You are the sun in my life… now get 93 million miles away from me.",
-    "If I wanted to kill myself, I would simply jump from your ego to your IQ.",
-    "If I wanted to kill myself, I would simply jump from your ego to your IQ.",
-    "I didn’t mean to offend you… but it was a huge plus.",
-    "Whoever told you to be yourself, gave you a bad advice.",
-    "I can’t wait to spend my whole life without you.",
-    "I don’t know what makes you so stupid, but it works.",
-    "Sorry I can’t think of an insult dumb enough for you to understand.",
-    "If I throw a stick, will you leave me too?"
-]
 
-used_roasts = {}  # To keep track of roasts used for each user
+def format_uptime(start_time):
+    delta_uptime = datetime.datetime.utcnow() - start_time
+    return str(delta_uptime)
 
-@bot.event
-async def on_ready():
-    print(f'Logged in as {bot.user.name}')
-    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name="SezarX's Meets"))
-@bot.command(name='roast')
-async def roast_command(ctx, user: discord.Member):
-    if user is None:
-        await ctx.send("Please specify a user to roast.")
-        return
-
-    # Check if roasting is enabled for the user
-    if user.id not in used_roasts:
-        used_roasts[user.id] = set()
-
-    if user.id in used_roasts and 'roast_off' in used_roasts[user.id]:
-        await ctx.send("Roasting is currently turned off for this user.")
-        return
-
-    while True:
-        # Select a roast that hasn't been used for the specified user
-        available_roasts = set(roasts) - used_roasts[user.id]
-        if not available_roasts:
-            await ctx.send("No more roasts available for this user.")
-            return
-
-        roast = random.choice(list(available_roasts))
-        used_roasts[user.id].add(roast)
-
-        # Send the roast
-        roast_message = await ctx.send(f"{user.mention}, {roast}")
-
-        # Listen for replies and continue roasting
-        def reply_check(message):
-            return message.author == user and message.reference and message.reference.message_id == roast_message.id
-
-        try:
-            reply_message = await bot.wait_for('message', check=reply_check, timeout=60)
-        except TimeoutError:
-            break  # Stop roasting if no reply within 60 seconds
-
-# Rest of the code remains unchanged
-# Prompt user for bot token
-bot_token = input("Please enter your bot token: ")
-sniped_messages = {}
-
-@bot.event
-async def on_message_delete(message):
-    sniped_messages[message.channel.id] = {
-        "content": message.content,
-        "author": str(message.author),
-        "timestamp": str(message.created_at),
-    }
-
-@bot.command(name='snipe')
-@commands.has_permissions(manage_messages=True)
-async def snipe_command(ctx):
-    channel_id = ctx.channel.id
-    if channel_id not in sniped_messages:
-        await ctx.send("No recently deleted messages to snipe.")
-        return
-
-    sniped_message = sniped_messages[channel_id]
-    embed = discord.Embed(
-        title="Sniped Message",
-        color=discord.Color.blue(),
-        description=sniped_message['content']
-    )
-    embed.set_author(name=sniped_message['author'])
-    embed.set_footer(text=f"Deleted at {sniped_message['timestamp']}")
-
-    await ctx.send(embed=embed)
-
-@bot.command(name='text')
-@commands.has_permissions(manage_messages=True)
-async def text_command(ctx, *, text_to_draw):
-    # Send an initial embed with a question about changing the background
-    initial_embed = discord.Embed(
-        title="Change Background?",
-        description="Do you want to change the background?",
-        color=discord.Color.blue()
-    )
-    message = await ctx.send(embed=initial_embed)
-
-    # Add reactions (✅ for yes, ❌ for no)
-    reactions = ['✅', '❌']
-    for reaction in reactions:
-        await message.add_reaction(reaction)
-
-    def check(reaction, user):
-        return user == ctx.author and str(reaction.emoji) in reactions
-
-    try:
-        reaction, _ = await bot.wait_for('reaction_add', timeout=30.0, check=check)
-    except TimeoutError:
-        await ctx.send("You took too long to respond. The background will not be changed.")
-        return
-
-    if str(reaction.emoji) == '✅':
-        # Send an embed with background color options
-        color_embed = discord.Embed(
-            title="Backgrounds",
-            description="Please choose a background color by typing it in the chat or select from the list:",
-            color=discord.Color.blue()
-        )
-        color_options = ['black', 'red', 'orange', 'purple', 'green', 'white', 'cyan', 'lime', 'blue', 'lightblue']
-        color_embed.add_field(name="Color Options", value=', '.join(color_options))
-        await message.edit(embed=color_embed)
-
-        def color_check(msg):
-            return msg.author == ctx.author and msg.content.lower() in color_options
-
-        try:
-            response = await bot.wait_for('message', timeout=30.0, check=color_check)
-        except TimeoutError:
-            await ctx.send("You took too long to choose a background color. The default background will be used.")
-            return
-
-        # Extract color from the user's message
-        color_choice = response.content.lower()
-
-        # Generate image with the chosen background color and text
-        image = generate_image(text_to_draw, color_choice)
-    else:
-        # Generate image with the default background color and text
-        image = generate_image(text_to_draw, 'default')
-
-    # Save the image to a file
-    image_path = "drawn_image.png"
-    image.save(image_path)
-
-    # Send the image to the Discord channel
-    await ctx.send(file=discord.File(image_path))
-
-def generate_image(text, background_color):
-    # Create a blank image with a white background
-    image_size = (300, 150)
-    if background_color.lower() == 'default':
-        background_color = 'white'
-    image = Image.new("RGB", image_size, background_color)
-
-    # Initialize the drawing context
-    draw = ImageDraw.Draw(image)
-
-    # Use a basic font (you can replace this with a path to a specific font file)
-    font = ImageFont.load_default()
-
-    # Calculate text position
-    text_width, text_height = draw.textsize(text, font)
-    position = ((image_size[0] - text_width) // 2, (image_size[1] - text_height) // 2)
-
-    # Draw the text on the image
-    draw.text(position, text, font=font, fill="black")
-
-    return image
-
-@bot.command(name='lock')
-@commands.has_permissions(manage_channels=True)
-async def lock_channel(ctx):
-    # Check if the channel is already locked
-    if ctx.channel.overwrites_for(ctx.guild.default_role).send_messages is False:
-        await ctx.send("This channel is already locked.")
-        return
-
-    # Deny send_messages permission for @everyone
-    await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=False)
-    await ctx.send("Channel locked. Members cannot send messages.")
-
-@bot.command(name='unlock')
-@commands.has_permissions(manage_channels=True)
-async def unlock_channel(ctx):
-    # Check if the channel is already unlocked
-    if ctx.channel.overwrites_for(ctx.guild.default_role).send_messages is True:
-        await ctx.send("This channel is already unlocked.")
-        return
-
-    # Allow send_messages permission for @everyone
-    await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=True)
-    await ctx.send("Channel unlocked. Members can send messages again.")
-
-@bot.command(name='info')
-async def info_command(ctx):
-    # Create an embed for the help command
-    info_embed = discord.Embed(
-        title="BluBot's Commands",
-        color=discord.Color.blue()
-    )
-    info_embed.set_thumbnail(url=bot.user.avatar_url)
-
-    # Add commands to the embed
-    commands_info = [
-        (".skullboard", "This command is only for staffs", "usage: skullboard <user id/or mention> <channel> <text> <message id>"),
-        (".disabletext", "This command is only for staffs", "usage: disabletext <channel mention>\nWhat does it do? This command won't let people send any texts without attaching any images to it."),
-        (".enabletext", "This command is only for staffs", "usage: enabletext <channel mention>"),
-        (".roast", "Members can use this command", "usage: roast <user mention>\nWhat does it do? It can roast anyone with its Google roast lines."),
-        (".snipe", "This command is only for staffs", "usage: .snipe\nWhat does it do? This command will give you the ability to see deleted messages."),
-        (".text", "This command is only for staffs", 'usage: .text <whatever you like here>\nWhat does it do? It can put any text into the image.'),
-        (".lock", "This command is only for staffs", "usage: go to the channel that you wanna lock and just type .lock\nWhat does it do? Locks the channel."),
-        (".unlock", "This command is only for staffs", "usage: go to the channel that you wanna unlock and type .unlock"),
-    ]
-
-    for command_name, command_permission, command_description in commands_info:
-        info_embed.add_field(
-            name=command_name,
-            value=f"{command_permission}\n{command_description}",
-            inline=False
-        )
-
-    
-    # Send the help embed
-    await ctx.send(embed=info_embed)
-  
+@bot.check
+def is_bot_developer(ctx):
+    return ctx.author.id == developer_id
+if __name__ == "__main__":
+  # Prompt user for bot token
+  bot_token = input("Please enter your bot token: ") 
+  # Run the bot with the provided token
 bot.run(bot_token)
-
