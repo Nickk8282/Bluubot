@@ -7,6 +7,8 @@ import os
 import json
 import psutil
 import datetime
+from PIL import Image, ImageEnhance
+import io
 
 app = Flask(__name__)
 @app.route('/')
