@@ -299,6 +299,42 @@ async def say(ctx, *, text):
         await channel.send(text)
     else:
         await ctx.send("Error: Channel not found.")
+
+@bot.command()
+async def enhance(ctx):
+    # Check if an image is attached
+    if len(ctx.message.attachments) == 0:
+        await ctx.send("Please attach an image to enhance.")
+        return
+
+    # Get the first attached image
+    attachment = ctx.message.attachments[0]
+    image_url = attachment.url
+
+    # Download the image
+    image_data = await attachment.read()
+    image = Image.open(io.BytesIO(image_data))
+
+    # Perform enhancement (making the image gold and improving quality)
+    enhanced_image = enhance_image(image)
+
+    # Save the enhanced image to a buffer
+    enhanced_image_buffer = io.BytesIO()
+    enhanced_image.save(enhanced_image_buffer, format='PNG')
+    enhanced_image_buffer.seek(0)
+
+    # Send the enhanced image back to Discord
+    await ctx.send(file=discord.File(enhanced_image_buffer, 'enhanced_image.png'))
+
+def enhance_image(image):
+    # Make the image gold (you can customize this enhancement)
+    enhanced_image = image.convert("RGB")
+    enhanced_image = ImageEnhance.Color(enhanced_image).enhance(2.0)
+
+    # Improve the quality (you can customize this enhancement)
+    enhanced_image = ImageEnhance.Sharpness(enhanced_image).enhance(2.0)
+
+    return enhanced_image
       
 if __name__ == "__main__":
   # Prompt user for bot token
