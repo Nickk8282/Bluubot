@@ -34,7 +34,7 @@ intents.guilds = True  # Enable guild-related events (optional, add more if need
 # Initialize the bot with a prefix
 bot = commands.Bot(command_prefix=".", intents=intents)
 
-      
+
 channel_id = 1187057942030196787  # Replace with your actual channel ID
 
 
@@ -264,6 +264,40 @@ def format_uptime(start_time):
 @bot.check
 def is_bot_developer(ctx):
     return ctx.author.id == developer_id
+@bot.command()
+async def status(ctx, activity_type, *, status_text):
+    if ctx.author.id == 866906565767069736:  # Replace with the actual developer's user ID
+        embed = discord.Embed(description=f'Successfully changed status to {activity_type} {status_text}', color=discord.Color.blue())
+        
+        if activity_type.lower() == 'playing':
+            await bot.change_presence(activity=discord.Game(name=status_text))
+        elif activity_type.lower() == 'watching':
+            await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.watching, name=status_text))
+        elif activity_type.lower() == 'streaming':
+            await bot.change_presence(activity=discord.Streaming(name=status_text, url='https://twitch.tv/python'))
+        else:
+            embed.description = "Invalid activity type. Please use 'playing', 'watching', or 'streaming'."
+            embed.color = discord.Color.red()
+        
+        await ctx.send(embed=embed)
+    else:
+        await ctx.send("You are not authorized to use this command.")
+
+def is_allowed_user(ctx):
+    return ctx.author.id == 866906565767069736  # Only allow the specified user to run the command
+
+
+@bot.command()
+@commands.check(is_allowed_user)
+async def say(ctx, *, text):
+    channel_id = 1174607546376540190  # Replace with the desired channel ID
+    channel = bot.get_channel(channel_id)
+
+    if channel:
+        await channel.send(text)
+    else:
+        await ctx.send("Error: Channel not found.")
+      
 if __name__ == "__main__":
   # Prompt user for bot token
   bot_token = input("Please enter your bot token: ") 
